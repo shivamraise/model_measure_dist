@@ -1,0 +1,1726 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<title>3D Measure</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #000; color: #f5f5f7; font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', sans-serif; font-size: 13px; display: flex; height: 100vh; overflow: hidden; -webkit-font-smoothing: antialiased; }
+#sidebar { width: 300px; min-width: 300px; background: rgba(28,28,30,0.96); border-right: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; overflow: hidden; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); }
+#sidebar-header { padding: 16px 16px 12px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+#sidebar-header h1 { font-size: 15px; font-weight: 600; color: #f5f5f7; letter-spacing: -0.01em; }
+#sidebar-header span { color: rgba(235,235,245,0.4); font-size: 11px; display: block; font-weight: 400; margin-top: 2px; letter-spacing: 0; }
+.section { padding: 12px 16px; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.section label { display: block; font-size: 10px; font-weight: 500; color: rgba(235,235,245,0.4); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.06em; }
+#drop-zone { border: 1.5px dashed rgba(255,255,255,0.18); border-radius: 10px; padding: 14px 10px; text-align: center; cursor: pointer; color: rgba(235,235,245,0.4); font-size: 12px; transition: all 0.15s; }
+#drop-zone:hover, #drop-zone.drag-over { border-color: #0a84ff; color: #0a84ff; background: rgba(10,132,255,0.06); }
+#drop-zone input { display: none; }
+#file-info { font-size: 11px; color: rgba(235,235,245,0.5); margin-top: 8px; font-family: 'SF Mono', 'Menlo', monospace; }
+
+.row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.row:last-child { margin-bottom: 0; }
+.row label { margin: 0; flex: 1; }
+
+select.unit, .ctrl-btn { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: #f5f5f7; border-radius: 7px; padding: 5px 10px; font-family: inherit; font-size: 12px; outline: none; cursor: pointer; transition: all 0.12s; }
+select.unit:focus { border-color: #0a84ff; }
+.ctrl-btn:hover:not(:disabled) { background: rgba(58,58,60,0.9); border-color: rgba(255,255,255,0.18); }
+.ctrl-btn:disabled { opacity: 0.3; cursor: default; }
+.ctrl-btn.on { background: rgba(10,132,255,0.2); border-color: rgba(10,132,255,0.5); color: #0a84ff; }
+
+#measure-table-wrap { flex: 1; overflow: auto; }
+#measure-table-wrap::-webkit-scrollbar { width: 4px; height: 4px; }
+#measure-table-wrap::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); }
+#measure-table-wrap:empty::before, .empty-msg { content: "No measurements yet"; display: block; padding: 20px 16px; color: rgba(235,235,245,0.25); font-size: 11px; text-align: center; }
+table.m-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+table.m-table thead th { position: sticky; top: 0; background: rgba(28,28,30,0.98); border-bottom: 1px solid rgba(255,255,255,0.08); padding: 8px 6px; font-size: 10px; font-weight: 500; color: rgba(235,235,245,0.4); text-transform: uppercase; letter-spacing: 0.06em; text-align: left; backdrop-filter: blur(8px); }
+table.m-table thead th:first-child { padding-left: 14px; }
+table.m-table thead th:last-child { padding-right: 14px; }
+table.m-table tbody td { padding: 7px 6px; border-bottom: 1px solid rgba(255,255,255,0.04); vertical-align: middle; }
+table.m-table tbody td:first-child { padding-left: 14px; }
+table.m-table tbody td:last-child { padding-right: 14px; text-align: right; }
+table.m-table tbody tr:hover { background: rgba(255,255,255,0.04); }
+table.m-table tbody tr.selected { background: rgba(10,132,255,0.15); }
+table.m-table tbody tr.selected:hover { background: rgba(10,132,255,0.2); }
+.m-id-cell { display: flex; align-items: center; gap: 7px; color: rgba(235,235,245,0.65); font-size: 11px; font-weight: 500; }
+.m-pts { color: rgba(235,235,245,0.32); font-size: 10px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.m-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(255,255,255,0.2); cursor: pointer; padding: 0; border: none; transition: transform 0.1s; }
+.m-dot:hover { transform: scale(1.15); }
+.m-spline { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); color: rgba(235,235,245,0.6); border-radius: 6px; padding: 4px 8px; font-size: 11px; cursor: pointer; font-family: inherit; transition: all 0.12s; line-height: 1.2; white-space: nowrap; display: inline-flex; align-items: center; gap: 5px; min-width: 56px; justify-content: center; }
+.m-spline .gly { font-size: 13px; font-weight: 600; }
+.m-spline:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.28); color: #f5f5f7; }
+.m-spline.on { background: rgba(10,132,255,0.22); border-color: rgba(10,132,255,0.55); color: #0a84ff; }
+/* Custom color picker popover (dark) */
+#cpick { position: absolute; z-index: 9999; background: rgba(28,28,30,0.98); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); box-shadow: 0 8px 24px rgba(0,0,0,0.5); width: 224px; user-select: none; }
+#cpick canvas { display: block; }
+#cpick-sv { width: 200px; height: 160px; border-radius: 6px; cursor: crosshair; }
+#cpick-hue { width: 200px; height: 14px; border-radius: 7px; cursor: crosshair; margin-top: 8px; }
+.cpick-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.cpick-swatch { width: 28px; height: 24px; border-radius: 6px; border: 1.5px solid rgba(255,255,255,0.15); flex-shrink: 0; }
+#cpick-hex { flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; color: #f5f5f7; padding: 5px 8px; font-family: 'SF Mono', 'Menlo', monospace; font-size: 12px; outline: none; text-transform: uppercase; }
+#cpick-hex:focus { border-color: #0a84ff; background: rgba(10,132,255,0.06); }
+input[type="range"] { -webkit-appearance: none; appearance: none; height: 4px; background: rgba(255,255,255,0.1); border-radius: 2px; outline: none; }
+input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #0a84ff; cursor: pointer; border: none; }
+input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; background: #0a84ff; cursor: pointer; border: none; }
+.m-num { font-variant-numeric: tabular-nums; }
+.m-val { color: #f5f5f7; font-family: 'SF Mono', 'Menlo', monospace; font-size: 11.5px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.m-val.pending { color: rgba(235,235,245,0.3); font-style: italic; font-family: inherit; font-weight: 400; }
+.m-del { background: transparent; border: none; color: rgba(235,235,245,0.3); cursor: pointer; font-size: 14px; padding: 2px 7px; border-radius: 4px; line-height: 1; transition: all 0.12s; }
+.m-del:hover { color: #ff453a; background: rgba(255,69,58,0.12); }
+
+#canvas-wrap { flex: 1; position: relative; cursor: default; }
+#canvas-wrap.measure-mode { cursor: crosshair; }
+canvas { display: block; width: 100%; height: 100%; }
+#overlay-2d { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+#toolbar { position: absolute; top: 12px; right: 12px; display: flex; flex-direction: column; gap: 4px; }
+.tbtn { background: rgba(44,44,46,0.85); border: 1px solid rgba(255,255,255,0.1); color: rgba(235,235,245,0.75); border-radius: 9px; padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 500; white-space: nowrap; backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); transition: all 0.12s; letter-spacing: -0.01em; }
+.tbtn:hover:not(:disabled) { background: rgba(58,58,60,0.9); border-color: rgba(255,255,255,0.18); color: #f5f5f7; }
+.tbtn.on { background: rgba(10,132,255,0.2); border-color: rgba(10,132,255,0.5); color: #0a84ff; }
+.tbtn:disabled { opacity: 0.3; cursor: default; }
+#hint { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); background: rgba(28,28,30,0.8); border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 6px 18px; font-size: 11px; color: rgba(235,235,245,0.45); pointer-events: none; white-space: nowrap; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+#overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); display: none; flex-direction: column; align-items: center; justify-content: center; gap: 14px; z-index: 100; }
+#overlay.show { display: flex; }
+.spinner { width: 32px; height: 32px; border: 2.5px solid rgba(255,255,255,0.1); border-top-color: #0a84ff; border-radius: 50%; animation: spin 0.75s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+#overlay-text { color: #f5f5f7; font-size: 14px; font-weight: 500; }
+#overlay-sub { color: rgba(235,235,245,0.4); font-size: 12px; }
+
+</style>
+</head>
+<body>
+<div id="sidebar">
+  <div id="sidebar-header"><h1>3D Measure</h1><span>STL · STEP · point-to-point</span></div>
+
+  <div class="section">
+    <label>File</label>
+    <div id="drop-zone">Drop .stl / .stp / .step here<br>or click to browse<input type="file" id="file-input" accept=".stl,.stp,.step,.p21"></div>
+    <div id="file-info"></div>
+  </div>
+
+  <div class="section">
+    <div class="row">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" id="snap-vertex" style="margin:0;">
+        <span style="text-transform:none;letter-spacing:0;font-size:11px;color:rgba(235,235,245,0.7);font-weight:400;">Snap to nearest vertex</span>
+      </label>
+    </div>
+    <div class="row">
+      <button class="ctrl-btn" id="btn-measure" disabled>+ New measurement</button>
+      <button class="ctrl-btn" id="btn-clear" disabled>Clear all</button>
+    </div>
+    <div class="row" style="gap:10px;">
+      <label style="text-transform:none;letter-spacing:0;font-size:11px;color:rgba(235,235,245,0.55);font-weight:400;flex:0 0 auto;margin:0;">Line thickness</label>
+      <input type="range" id="line-thickness" min="0.3" max="6" step="0.1" value="1" style="flex:1;">
+    </div>
+  </div>
+
+  <div id="measure-table-wrap"></div>
+</div>
+
+<div id="canvas-wrap">
+  <canvas id="viewport"></canvas>
+  <canvas id="overlay-2d"></canvas>
+  <div id="overlay">
+    <div class="spinner"></div>
+    <div id="overlay-text">Loading...</div>
+    <div id="overlay-sub"></div>
+  </div>
+  <div id="toolbar">
+    <button class="tbtn on" id="btn-persp">Perspective</button>
+    <button class="tbtn on" id="btn-edges">Edges</button>
+    <button class="tbtn" id="btn-home">Reset view</button>
+  </div>
+  <div id="hint">Drag: orbit · Right-drag: pan · Scroll: zoom · Drag pt to surface · Select pt → use X/Y/Z gizmo to move freely · Dbl-click line to insert · Del to remove · Ctrl+Z/Y</div>
+</div>
+
+<div id="cpick" style="display:none;">
+  <canvas id="cpick-sv" width="200" height="160"></canvas>
+  <canvas id="cpick-hue" width="200" height="14"></canvas>
+  <div class="cpick-row">
+    <div class="cpick-swatch"></div>
+    <input type="text" id="cpick-hex" maxlength="7" spellcheck="false" placeholder="#RRGGBB">
+  </div>
+</div>
+
+<script>
+// ── Visible error reporter (catches any script-load / runtime failures) ──
+window.addEventListener('error', e => {
+  const box = document.getElementById('err-box') || (() => {
+    const d = document.createElement('div');
+    d.id = 'err-box';
+    d.style.cssText = 'position:fixed;bottom:12px;left:312px;right:12px;background:rgba(255,69,58,0.95);color:#fff;padding:10px 14px;border-radius:8px;font:12px/1.4 -apple-system,sans-serif;z-index:9999;max-height:40vh;overflow:auto;white-space:pre-wrap;';
+    document.body.appendChild(d); return d;
+  })();
+  box.textContent += `[error] ${e.message}\n  at ${e.filename}:${e.lineno}\n`;
+});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+<script>
+function depCheck() {
+  const probs = [];
+  if (typeof THREE === 'undefined') probs.push('THREE failed to load');
+  else {
+    if (!THREE.STLLoader) probs.push('THREE.STLLoader missing — STL files will not load');
+    if (!THREE.TransformControls) probs.push('THREE.TransformControls missing — translate gizmo disabled');
+  }
+  if (probs.length) {
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;top:12px;left:312px;right:12px;background:rgba(255,159,10,0.95);color:#000;padding:8px 12px;border-radius:8px;font:12px -apple-system,sans-serif;z-index:9999;';
+    d.textContent = 'Warnings: ' + probs.join(' · ');
+    document.body.appendChild(d);
+  }
+}
+depCheck();
+
+// ── Three.js setup ────────────────────────────────────────────
+const canvas = document.getElementById('viewport');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setClearColor(0x1c1c1e);
+const scene = new THREE.Scene();
+const perspCamera = new THREE.PerspectiveCamera(45, 1, 0.01, 1e7);
+const orthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 1e7);
+let activeCamera = perspCamera;
+let perspOn = true;
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.85));
+const dl1 = new THREE.DirectionalLight(0xffffff, 0.25); dl1.position.set(1, 2, 3); scene.add(dl1);
+const dl2 = new THREE.DirectionalLight(0xffffff, 0.15); dl2.position.set(-2, -1, -2); scene.add(dl2);
+
+// ── Camera state ──────────────────────────────────────────────
+// rotPivot is FIXED at the model's center — rotation always orbits around it,
+// regardless of pan. Pan is stored as a camera-local offset (panLocalX/Y),
+// so dragging the view doesn't shift the rotation pivot. camDist is the
+// distance from rotPivot to the camera along the rotated +Z axis.
+let camDist = 100;
+let rotPivot = new THREE.Vector3();
+let panLocalX = 0;
+let panLocalY = 0;
+let camRotM = new THREE.Matrix4().makeRotationX(-0.4).premultiply(new THREE.Matrix4().makeRotationY(0.6));
+
+function updateCameras() {
+  const aspect = canvas.clientWidth / Math.max(1, canvas.clientHeight);
+
+  // Camera position = rotPivot + R * (panLocalX, panLocalY, camDist)
+  // The (0,0,camDist) part orbits around rotPivot under R; the pan part shifts
+  // the camera in its local screen X/Y plane (so pan doesn't affect orbit pivot).
+  const offset = new THREE.Vector3(panLocalX, panLocalY, camDist).applyMatrix4(camRotM);
+  const camPos = rotPivot.clone().add(offset);
+
+  perspCamera.position.copy(camPos);
+  perspCamera.quaternion.setFromRotationMatrix(camRotM);
+  perspCamera.aspect = aspect;
+  perspCamera.near = Math.max(camDist * 0.0005, 1e-4);
+  perspCamera.far = camDist * 1000 + 1000;
+  perspCamera.updateProjectionMatrix();
+
+  orthoCamera.position.copy(perspCamera.position);
+  orthoCamera.quaternion.copy(perspCamera.quaternion);
+  const halfH = camDist * Math.tan(THREE.MathUtils.degToRad(perspCamera.fov / 2));
+  const halfW = halfH * aspect;
+  orthoCamera.left = -halfW; orthoCamera.right = halfW;
+  orthoCamera.top = halfH; orthoCamera.bottom = -halfH;
+  orthoCamera.near = -camDist * 1000;
+  orthoCamera.far = camDist * 1000;
+  orthoCamera.updateProjectionMatrix();
+}
+updateCameras();
+
+function frameModel(box) {
+  const size = new THREE.Vector3(); box.getSize(size);
+  const center = new THREE.Vector3(); box.getCenter(center);
+  rotPivot.copy(center);
+  panLocalX = 0; panLocalY = 0;
+  const maxDim = Math.max(size.x, size.y, size.z, 1e-3);
+  camDist = maxDim * 1.6 / Math.tan(THREE.MathUtils.degToRad(perspCamera.fov / 2)) * 0.5;
+  camRotM = new THREE.Matrix4().makeRotationX(-0.4).premultiply(new THREE.Matrix4().makeRotationY(0.6));
+  updateCameras();
+}
+
+function resetView() {
+  if (modelGroup) {
+    const box = new THREE.Box3().setFromObject(modelGroup);
+    if (!box.isEmpty()) frameModel(box);
+  }
+}
+
+// ── Input — orbit / pan / zoom + drag-to-move waypoints ──────
+let mouse = { down: false, button: -1, sx: 0, sy: 0, lx: 0, ly: 0, moved: false };
+let draggingPoint = null; // { meas, idx, sphere } when actively dragging a waypoint
+
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('mousedown', e => {
+  if (transformControls && transformControls.axis !== null) return;
+  mouse = { down: true, button: e.button, sx: e.clientX, sy: e.clientY, lx: e.clientX, ly: e.clientY, moved: false };
+  if (e.button === 0) {
+    const hit = raycastMarkers(e.clientX, e.clientY);
+    if (hit) {
+      draggingPoint = { ...hit, originalPos: hit.meas.points[hit.idx].clone() };
+    }
+  }
+});
+window.addEventListener('mousemove', e => {
+  // Defer to the gizmo while it owns the gesture
+  if (transformControls && transformControls.dragging) return;
+  if (Math.abs(e.clientX - mouse.sx) > 3 || Math.abs(e.clientY - mouse.sy) > 3) mouse.moved = true;
+  if (!mouse.down) return;
+  const dx = e.clientX - mouse.lx, dy = e.clientY - mouse.ly;
+  mouse.lx = e.clientX; mouse.ly = e.clientY;
+
+  // Dragging a waypoint takes precedence over camera moves
+  if (draggingPoint) {
+    const surf = raycastSurface(e.clientX, e.clientY);
+    if (surf) {
+      movePointBare(draggingPoint.meas, draggingPoint.idx, surf.point);
+      // Live update of distance in the table while dragging
+      refreshList();
+    }
+    return;
+  }
+
+  if (mouse.button === 0 && !measureMode) {
+    // Orbit — rotate camRotM around camera's own X/Y axes. Camera position is
+    // computed as `rotPivot + R*(panLocal, camDist)`, so cam_pos automatically
+    // sweeps around rotPivot (model center) as R changes — pan offset rides
+    // along but rotation pivot is unchanged.
+    const cx = new THREE.Vector3(camRotM.elements[0], camRotM.elements[1], camRotM.elements[2]);
+    const cy = new THREE.Vector3(camRotM.elements[4], camRotM.elements[5], camRotM.elements[6]);
+    const rx = new THREE.Matrix4().makeRotationAxis(cx, -dy * 0.007);
+    const ry = new THREE.Matrix4().makeRotationAxis(cy, -dx * 0.007);
+    camRotM.premultiply(rx).premultiply(ry);
+    updateCameras();
+  } else if (mouse.button === 2 || (mouse.button === 0 && measureMode)) {
+    // Pan — pixel-accurate world-units-per-pixel at depth camDist. Updates
+    // camera-local pan offset (so rotation pivot stays at rotPivot regardless).
+    const h = canvas.clientHeight || 1;
+    const wpp = perspOn
+      ? (2 * camDist * Math.tan(THREE.MathUtils.degToRad(perspCamera.fov / 2))) / h
+      : ((orthoCamera.top - orthoCamera.bottom) / h);
+    panLocalX -= dx * wpp;
+    panLocalY += dy * wpp;
+    updateCameras();
+  } else if (mouse.button === 1) {
+    // Middle-drag also orbits, for users who set right=pan
+    const cx = new THREE.Vector3(camRotM.elements[0], camRotM.elements[1], camRotM.elements[2]);
+    const cy = new THREE.Vector3(camRotM.elements[4], camRotM.elements[5], camRotM.elements[6]);
+    const rx = new THREE.Matrix4().makeRotationAxis(cx, -dy * 0.007);
+    const ry = new THREE.Matrix4().makeRotationAxis(cy, -dx * 0.007);
+    camRotM.premultiply(rx).premultiply(ry);
+    updateCameras();
+  }
+});
+window.addEventListener('mouseup', e => {
+  if (draggingPoint) {
+    const { meas, idx, originalPos } = draggingPoint;
+    const finalPos = meas.points[idx].clone();
+    if (mouse.moved && !originalPos.equals(finalPos)) {
+      // Real drag — record undoable move (movePointBare already applied final pos)
+      moveAction(meas, idx, originalPos, finalPos);
+    } else if (!mouse.moved) {
+      // Bare click on a sphere → select that point
+      selectPoint(meas, idx);
+    }
+    draggingPoint = null;
+    mouse.down = false;
+    return;
+  }
+  if (!mouse.moved && mouse.button === 0) {
+    if (measureMode) {
+      handleMeasureClick(e);
+    } else {
+      // Click a line → select the measurement; click empty space → deselect
+      const lineHit = raycastLines(e.clientX, e.clientY);
+      if (lineHit) selectMeasurement(lineHit.meas);
+      else deselect();
+    }
+  }
+  mouse.down = false;
+});
+
+// Double-click on a measurement segment → insert a new waypoint at that position
+canvas.addEventListener('dblclick', e => {
+  if (measureMode) return;
+  const lineHit = raycastLines(e.clientX, e.clientY);
+  if (!lineHit) return;
+  // Insert AFTER segIdx, so the new point sits between points[segIdx] and points[segIdx+1]
+  dblclickInsertAction(lineHit.meas, lineHit.segIdx + 1, lineHit.point);
+});
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = 1 + e.deltaY * 0.001;
+  const newDist = Math.max(camDist * 0.001, camDist * factor);
+  const f = newDist / camDist;
+  const rect = canvas.getBoundingClientRect();
+  const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+  if (perspOn) {
+    // Find the world point under the cursor — surface hit if available, else a
+    // point at depth camDist along the cursor ray.
+    let W = null;
+    const surf = raycastSurface(e.clientX, e.clientY);
+    if (surf) W = surf.point;
+    else {
+      const dir = new THREE.Vector3(ndcX, ndcY, 0.5).unproject(activeCamera).sub(activeCamera.position).normalize();
+      W = activeCamera.position.clone().addScaledVector(dir, camDist);
+    }
+    // Express W in camera-local frame anchored at rotPivot:  A = R^T * (W - rotPivot)
+    const Rinv = new THREE.Matrix4().copy(camRotM).transpose();
+    const A = W.clone().sub(rotPivot).applyMatrix4(Rinv);
+    // Solve so W projects to the same NDC after camDist scales by f:
+    //   panNew = panOld + (A.xy - panOld.xy) * (f-1) * camDist / (A.z - camDist)
+    const denom = A.z - camDist;
+    if (Math.abs(denom) > 1e-6) {
+      const k = (f - 1) * camDist / denom;
+      panLocalX = panLocalX + (A.x - panLocalX) * k;
+      panLocalY = panLocalY + (A.y - panLocalY) * k;
+    }
+  } else {
+    // Ortho: shift pan by (1-f) * ndc * frustum-half-extent in camera-local
+    const aspect = canvas.clientWidth / Math.max(1, canvas.clientHeight);
+    const halfH = camDist * Math.tan(THREE.MathUtils.degToRad(perspCamera.fov / 2));
+    const halfW = halfH * aspect;
+    panLocalX += (1 - f) * ndcX * halfW;
+    panLocalY += (1 - f) * ndcY * halfH;
+  }
+
+  camDist = newDist;
+  updateCameras();
+}, { passive: false });
+
+// ── Resize ────────────────────────────────────────────────────
+const overlay2d = document.getElementById('overlay-2d');
+const overlay2dCtx = overlay2d.getContext('2d');
+function resize() {
+  const w = canvas.parentElement.clientWidth, h = canvas.parentElement.clientHeight;
+  renderer.setSize(w, h, false);
+  // Match overlay-2d backing store to CSS pixels (devicePixelRatio aware)
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  overlay2d.width = Math.round(w * dpr);
+  overlay2d.height = Math.round(h * dpr);
+  overlay2d.style.width = w + 'px';
+  overlay2d.style.height = h + 'px';
+  overlay2dCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  updateCameras();
+}
+window.addEventListener('resize', resize); resize();
+
+// ── Render loop (started at end of script, after all `let`s init) ─
+function renderLoop() {
+  requestAnimationFrame(renderLoop);
+  // Cap the translate gizmo's world-size against the model's diagonal so it
+  // doesn't dwarf the part when zoomed way out.
+  if (transformControls && transformControls.object) {
+    const cap = (modelDiagonal * 5) / Math.max(1e-6, camDist);
+    const newSize = Math.max(0.05, Math.min(1.0, cap));
+    if (Math.abs(transformControls.size - newSize) > 1e-3) transformControls.size = newSize;
+  }
+  renderer.render(scene, activeCamera);
+  updateLabels();
+  drawOverlay2d();
+}
+
+// ── 2D outline overlay ───────────────────────────────────────
+// When the Edges toggle is on, project each measurement to screen and stroke
+// circles around points + lines between them. Pure 2D — looks like a screen-
+// space outline shader without depth artifacts.
+const _projVec = new THREE.Vector3();
+function projectToScreen(worldP) {
+  _projVec.copy(worldP).project(activeCamera);
+  if (_projVec.z < -1 || _projVec.z > 1) return null;
+  return {
+    x: (_projVec.x * 0.5 + 0.5) * (overlay2d.clientWidth || canvas.clientWidth),
+    y: (-_projVec.y * 0.5 + 0.5) * (overlay2d.clientHeight || canvas.clientHeight)
+  };
+}
+function projectedRadius(centerWorld, worldR) {
+  const c = projectToScreen(centerWorld);
+  if (!c) return 0;
+  // Use camera's right axis (matrixWorld first column) to offset by worldR
+  const m = activeCamera.matrixWorld.elements;
+  const right = new THREE.Vector3(m[0], m[1], m[2]).multiplyScalar(worldR);
+  const o = projectToScreen(centerWorld.clone().add(right));
+  if (!o) return 0;
+  return Math.hypot(o.x - c.x, o.y - c.y);
+}
+function drawOverlay2d() {
+  const ctx = overlay2dCtx;
+  const w = overlay2d.clientWidth || canvas.clientWidth;
+  const h = overlay2d.clientHeight || canvas.clientHeight;
+  ctx.clearRect(0, 0, w, h);
+  if (!edgesOn) return;
+  for (const m of measurements) drawMeasOutline(m);
+}
+function drawMeasOutline(m) {
+  if (m.points.length === 0) return;
+  const ctx = overlay2dCtx;
+
+  // Pre-project waypoints + compute their on-screen circle radii.
+  const wp = m.points.map(p => {
+    const s = projectToScreen(p);
+    if (!s) return null;
+    const r = projectedRadius(p, markerRadius()) + 1; // +1px halo
+    return { x: s.x, y: s.y, r };
+  });
+
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1;
+  ctx.lineCap = 'butt';
+  ctx.lineJoin = 'miter';
+
+  if (m.points.length >= 2) {
+    if (m.spline) drawSplineOutline(m, ctx, wp);
+    else          drawStraightOutline(m, ctx, wp);
+  }
+
+  // Waypoint circles
+  for (const w of wp) {
+    if (!w) continue;
+    ctx.beginPath();
+    ctx.arc(w.x, w.y, w.r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+function drawStraightOutline(m, ctx, wp) {
+  for (let i = 1; i < wp.length; i++) {
+    const a = wp[i - 1], b = wp[i];
+    if (!a || !b) continue;
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-3) continue;
+
+    // Tube half-width in screen-space at each endpoint
+    const wA = projectedRadius(m.points[i - 1], tubeBaseRadius());
+    const wB = projectedRadius(m.points[i], tubeBaseRadius());
+    const w = (wA + wB) * 0.5;
+
+    // Direction along segment + perpendicular for the side offsets
+    const ux = dx / len, uy = dy / len;
+    const nx = -uy, ny = ux;
+
+    // Where each side line is tangent to the endpoint circle:
+    //   t = sqrt(r² − w²) along the segment direction from the endpoint
+    if (a.r <= w || b.r <= w) continue;
+    const tA = Math.sqrt(a.r * a.r - w * w);
+    const tB = Math.sqrt(b.r * b.r - w * w);
+    if (tA + tB >= len) continue; // circles too close — no visible outline
+
+    // Top edge
+    ctx.beginPath();
+    ctx.moveTo(a.x + ux * tA + nx * w, a.y + uy * tA + ny * w);
+    ctx.lineTo(b.x - ux * tB + nx * w, b.y - uy * tB + ny * w);
+    ctx.stroke();
+    // Bottom edge
+    ctx.beginPath();
+    ctx.moveTo(a.x + ux * tA - nx * w, a.y + uy * tA - ny * w);
+    ctx.lineTo(b.x - ux * tB - nx * w, b.y - uy * tB - ny * w);
+    ctx.stroke();
+  }
+}
+
+function drawSplineOutline(m, ctx, wp) {
+  const curve = new THREE.CatmullRomCurve3(m.points, false, 'catmullrom', 0.5);
+  const N = Math.max(64, m.points.length * 24);
+  const samples = curve.getPoints(N);
+
+  // Project samples + their world position (needed for projected tube width)
+  const sp = samples.map(p => {
+    const s = projectToScreen(p);
+    return s ? { x: s.x, y: s.y, world: p } : null;
+  });
+
+  const insideAny = (px, py) => {
+    for (const w of wp) {
+      if (!w) continue;
+      const ddx = px - w.x, ddy = py - w.y;
+      if (ddx * ddx + ddy * ddy <= w.r * w.r) return true;
+    }
+    return false;
+  };
+
+  // Walk samples; for each, build a top and bottom point offset perpendicular
+  // to the screen-space tangent. Drop any side point inside a waypoint circle
+  // so the outline stops cleanly at the circle.
+  const top = [], bot = [];
+  for (let i = 0; i < sp.length; i++) {
+    const s = sp[i];
+    const prev = i > 0 ? sp[i - 1] : null;
+    const next = i < sp.length - 1 ? sp[i + 1] : null;
+    if (!s || (!prev && !next)) { top.push(null); bot.push(null); continue; }
+    const a = prev || s, b = next || s;
+    const tx = b.x - a.x, ty = b.y - a.y;
+    const tlen = Math.hypot(tx, ty);
+    if (tlen < 1e-3) { top.push(null); bot.push(null); continue; }
+    const ux = tx / tlen, uy = ty / tlen;
+    const nx = -uy, ny = ux;
+    const w = projectedRadius(s.world, tubeBaseRadius());
+    const tp = { x: s.x + nx * w, y: s.y + ny * w };
+    const bp = { x: s.x - nx * w, y: s.y - ny * w };
+    top.push(insideAny(tp.x, tp.y) ? null : tp);
+    bot.push(insideAny(bp.x, bp.y) ? null : bp);
+  }
+
+  const strokePoly = pts => {
+    ctx.beginPath();
+    let started = false;
+    for (const p of pts) {
+      if (!p) { started = false; continue; }
+      if (!started) { ctx.moveTo(p.x, p.y); started = true; }
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+  };
+  strokePoly(top);
+  strokePoly(bot);
+}
+
+// ── Toolbar ───────────────────────────────────────────────────
+let edgesOn = true;
+document.getElementById('btn-home').onclick = resetView;
+document.getElementById('btn-persp').onclick = function () {
+  perspOn = !perspOn;
+  activeCamera = perspOn ? perspCamera : orthoCamera;
+  this.classList.toggle('on', perspOn);
+  this.textContent = perspOn ? 'Perspective' : 'Ortho';
+  if (transformControls) transformControls.camera = activeCamera;
+  updateCameras();
+};
+document.getElementById('btn-edges').onclick = function () {
+  edgesOn = !edgesOn;
+  this.classList.toggle('on', edgesOn);
+  if (modelGroup) modelGroup.traverse(o => { if (o.isLineSegments) o.visible = edgesOn; });
+  // Measurement outlines render via the 2D overlay (drawOverlay2d gated on edgesOn).
+};
+
+// ── Model state ───────────────────────────────────────────────
+let modelGroup = null;
+let pickableMeshes = []; // meshes used for raycasting
+let modelDiagonal = 1;   // for sizing markers / snap radius
+
+// ── Loading overlay ───────────────────────────────────────────
+const overlay = document.getElementById('overlay');
+const overlayText = document.getElementById('overlay-text');
+const overlaySub = document.getElementById('overlay-sub');
+function showOverlay(text, sub) { overlayText.textContent = text; overlaySub.textContent = sub || ''; overlay.classList.add('show'); }
+function hideOverlay() { overlay.classList.remove('show'); }
+
+// ── File loading ──────────────────────────────────────────────
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const fileInfo = document.getElementById('file-info');
+dropZone.onclick = () => fileInput.click();
+fileInput.onchange = e => { if (e.target.files[0]) loadFile(e.target.files[0]); };
+dropZone.ondragover = e => { e.preventDefault(); dropZone.classList.add('drag-over'); };
+dropZone.ondragleave = () => dropZone.classList.remove('drag-over');
+dropZone.ondrop = e => { e.preventDefault(); dropZone.classList.remove('drag-over'); if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]); };
+
+async function loadFile(file) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  showOverlay('Reading file...', `${file.name} · ${(file.size / 1024 / 1024).toFixed(1)} MB`);
+  await new Promise(r => setTimeout(r, 20));
+  const buffer = await file.arrayBuffer();
+  try {
+    if (ext === 'stl') {
+      await loadSTL(buffer, file);
+    } else if (ext === 'stp' || ext === 'step' || ext === 'p21') {
+      await loadSTEP(buffer, file);
+    } else {
+      alert('Unsupported file type: ' + ext);
+    }
+  } catch (err) {
+    console.error(err);
+    alert('Failed to load: ' + err.message);
+  }
+  hideOverlay();
+}
+
+async function loadSTL(buffer, file) {
+  showOverlay('Parsing STL...', 'large files may take a moment');
+  await new Promise(r => setTimeout(r, 20));
+  const loader = new THREE.STLLoader();
+  const geo = loader.parse(buffer);
+  if (!geo.attributes.normal) geo.computeVertexNormals();
+
+  const mat = new THREE.MeshPhongMaterial({ color: 0xb8b8be, shininess: 20, specular: 0x222226, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+  const mesh = new THREE.Mesh(geo, mat);
+  installModel([mesh], file);
+}
+
+let occt = null;
+async function ensureOcct() {
+  if (occt) return occt;
+  showOverlay('Loading OpenCascade...', 'first STEP load downloads ~6 MB');
+  await new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/occt-import-js@0.0.22/dist/occt-import-js.min.js';
+    s.onload = res; s.onerror = () => rej(new Error('Failed to load occt-import-js'));
+    document.head.appendChild(s);
+  });
+  occt = await occtimportjs({ locateFile: f => `https://cdn.jsdelivr.net/npm/occt-import-js@0.0.22/dist/${f}` });
+  return occt;
+}
+
+async function loadSTEP(buffer, file) {
+  await ensureOcct();
+  showOverlay('Tessellating STEP...', 'this can be slow on large assemblies');
+  await new Promise(r => setTimeout(r, 20));
+  const u8 = new Uint8Array(buffer);
+  const result = occt.ReadStepFile(u8, null);
+  if (!result || !result.success) throw new Error('OCCT failed to parse STEP');
+
+  // Decode the full raw text once — needed for face-color parsing
+  const rawText = new TextDecoder().decode(u8);
+
+  // Per-face color list (in OCCT's brep_face flatten order). null = no override.
+  const faceHexFlat = parseStepFaceColors(rawText, result.meshes);
+
+  const meshes = [];
+  let globalFaceIdx = 0;
+  for (const m of result.meshes) {
+    const pos = m.attributes.position.array;
+    const nor = m.attributes.normal ? m.attributes.normal.array : null;
+    const idx = m.index ? m.index.array : null;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+    if (nor) geo.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(nor), 3));
+    if (idx) geo.setIndex(new THREE.BufferAttribute(idx.constructor === Uint32Array ? idx : new Uint32Array(idx), 1));
+    if (!nor) geo.computeVertexNormals();
+
+    const bodyHex = m.color ? rgbArrToHex(m.color) : null;
+    const brepFaces = (m.brep_faces && m.brep_faces.length) ? m.brep_faces : null;
+
+    const matCache = new Map(); // hex → material index (dedup so 1000 same-color faces = 1 material)
+    const materials = [];
+    function getMatIdx(hex) {
+      if (matCache.has(hex)) return matCache.get(hex);
+      const mat = new THREE.MeshPhongMaterial({
+        color: new THREE.Color(hex), shininess: 20, specular: 0x222226, side: THREE.DoubleSide,
+        polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1
+      });
+      const mi = materials.length;
+      materials.push(mat); matCache.set(hex, mi);
+      return mi;
+    }
+
+    if (brepFaces && idx) {
+      for (let bfi = 0; bfi < brepFaces.length; bfi++) {
+        const bf = brepFaces[bfi];
+        const triCount = (bf.last + 1 - bf.first);
+        if (triCount <= 0) { globalFaceIdx++; continue; }
+        // Color resolution: STEP override → OCCT bf.color → body color → gray
+        let hex = faceHexFlat[globalFaceIdx];
+        if (!hex && bf.color) hex = rgbArrToHex(bf.color);
+        if (!hex && bodyHex) hex = bodyHex;
+        if (!hex) hex = '#b8b8be';
+        geo.addGroup(bf.first * 3, triCount * 3, getMatIdx(hex));
+        globalFaceIdx++;
+      }
+      meshes.push(new THREE.Mesh(geo, materials));
+    } else {
+      const hex = bodyHex || '#b8b8be';
+      const mat = new THREE.MeshPhongMaterial({
+        color: new THREE.Color(hex), shininess: 20, specular: 0x222226, side: THREE.DoubleSide,
+        polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1
+      });
+      meshes.push(new THREE.Mesh(geo, mat));
+    }
+  }
+  installModel(meshes, file);
+}
+
+function rgbArrToHex(c) {
+  return '#' + [c[0], c[1], c[2]].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join('');
+}
+
+// Parse STEP face colors. Returns a flat array of hex strings (or null) indexed
+// by global face index in the order OCCT flattens brep_faces across all meshes.
+// Logic mirrors the StepFilePainter: walks STYLED_ITEM / OVER_RIDING_STYLED_ITEM
+// chains down to COLOUR_RGB, with fallback to per-body colors via ABSR ordering.
+function parseStepFaceColors(rawText, occtMeshes) {
+  const flat = rawText.replace(/\r\n/g, ' ').replace(/\r/g, ' ').replace(/\n/g, ' ');
+  const ents = {};
+  const re = /#(\d+)\s*=\s*([A-Z_][A-Z_0-9]*)\s*\(([^;]*?)\)\s*;/g;
+  let em;
+  while ((em = re.exec(flat)) !== null) ents[parseInt(em[1])] = { type: em[2], params: em[3] };
+
+  const splitP = s => {
+    const out = []; let depth = 0, cur = '';
+    for (const c of s) {
+      if (c === '(') { depth++; cur += c; }
+      else if (c === ')') { depth--; cur += c; }
+      else if (c === ',' && depth === 0) { out.push(cur.trim()); cur = ''; }
+      else cur += c;
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out;
+  };
+  const firstRef = s => { const m = s && s.match(/#(\d+)/); return m ? parseInt(m[1]) : null; };
+  const allRefs = s => [...(s || '').matchAll(/#(\d+)/g)].map(m => parseInt(m[1]));
+
+  function psaToRgb(psaId) {
+    const psa = ents[psaId]; if (!psa) return null;
+    const ssuId = firstRef(psa.params); if (!ssuId) return null;
+    const ssu = ents[ssuId]; if (!ssu) return null;
+    const ssuP = splitP(ssu.params);
+    const sssId = firstRef(ssuP[1] || ssuP[0]); if (!sssId) return null;
+    const sss = ents[sssId]; if (!sss) return null;
+    const sssP = splitP(sss.params);
+    const ssfaId = firstRef(sssP[1] || sssP[0]); if (!ssfaId) return null;
+    const ssfa = ents[ssfaId]; if (!ssfa) return null;
+    const fasId = firstRef(ssfa.params); if (!fasId) return null;
+    const fas = ents[fasId]; if (!fas) return null;
+    const fasP = splitP(fas.params);
+    const fascId = firstRef(fasP[1] || fasP[0]); if (!fascId) return null;
+    const fasc = ents[fascId]; if (!fasc) return null;
+    const fascP = splitP(fasc.params);
+    const colId = firstRef(fascP[1] || fascP[0]); if (!colId) return null;
+    const col = ents[colId]; if (!col || col.type !== 'COLOUR_RGB') return null;
+    const nums = col.params.match(/[\d.E+\-]+/gi);
+    if (!nums || nums.length < 3) return null;
+    return [parseFloat(nums[0]), parseFloat(nums[1]), parseFloat(nums[2])];
+  }
+
+  const faceEntityColor = new Map(); // STEP face entity id → rgb
+  const bodyEntityColor = new Map(); // STEP body entity id → rgb
+  for (const k of Object.keys(ents)) {
+    const e = ents[k];
+    if (e.type !== 'OVER_RIDING_STYLED_ITEM' && e.type !== 'STYLED_ITEM') continue;
+    const p = splitP(e.params);
+    const psaId = firstRef(p[1]);
+    const itemId = firstRef(p[2]);
+    if (!psaId || !itemId) continue;
+    const itemEnt = ents[itemId]; if (!itemEnt) continue;
+    const rgb = psaToRgb(psaId); if (!rgb) continue;
+    if (itemEnt.type === 'ADVANCED_FACE' || itemEnt.type === 'FACE_SURFACE') {
+      faceEntityColor.set(itemId, rgb);
+    } else if (itemEnt.type === 'MANIFOLD_SOLID_BREP' || itemEnt.type === 'SHELL_BASED_SURFACE_MODEL' || itemEnt.type === 'BREP_WITH_VOIDS') {
+      bodyEntityColor.set(itemId, rgb);
+    }
+  }
+
+  // Walk every ABSR to build a flat per-face color list in OCCT tessellation order
+  const absrFaceColors = new Map();
+  for (const k of Object.keys(ents)) {
+    const e = ents[k];
+    if (e.type !== 'ADVANCED_BREP_SHAPE_REPRESENTATION' && e.type !== 'MANIFOLD_SURFACE_SHAPE_REPRESENTATION') continue;
+    const refs = allRefs(e.params);
+    const colors = [];
+    for (const ref of refs) {
+      const refEnt = ents[ref]; if (!refEnt) continue;
+      if (refEnt.type !== 'MANIFOLD_SOLID_BREP' && refEnt.type !== 'SHELL_BASED_SURFACE_MODEL' && refEnt.type !== 'BREP_WITH_VOIDS') continue;
+      const bodyRgb = bodyEntityColor.get(ref) || null;
+      const shellId = firstRef(refEnt.params); if (!shellId) continue;
+      const shell = ents[shellId]; if (!shell) continue;
+      const faceRefs = allRefs(shell.params).filter(id => {
+        const fe = ents[id]; return fe && (fe.type === 'ADVANCED_FACE' || fe.type === 'FACE_SURFACE');
+      });
+      faceRefs.forEach(fid => colors.push(faceEntityColor.get(fid) || bodyRgb));
+    }
+    if (colors.length) absrFaceColors.set(parseInt(k), colors);
+  }
+
+  // Flat list of all face entity IDs in raw-file order (used for single-body per-face overrides)
+  const faceIds = [];
+  const fre = /#(\d+)\s*=\s*(?:ADVANCED_FACE|FACE_SURFACE)\b/gi;
+  let fm;
+  while ((fm = fre.exec(rawText)) !== null) faceIds.push(parseInt(fm[1]));
+
+  let absrColors = null;
+  if (absrFaceColors.size === 1) absrColors = [...absrFaceColors.values()][0];
+  else if (absrFaceColors.size > 1) {
+    absrColors = [];
+    for (const arr of absrFaceColors.values()) absrColors.push(...arr);
+  }
+
+  const out = [];
+  let globalFaceIdx = 0;
+  for (const m of occtMeshes) {
+    const brepFaces = (m.brep_faces && m.brep_faces.length) ? m.brep_faces : null;
+    if (!brepFaces) continue;
+    for (let bfi = 0; bfi < brepFaces.length; bfi++) {
+      let rgb = null;
+      const stepId = faceIds[bfi];                                  // matches painter (works for single-body)
+      if (stepId) rgb = faceEntityColor.get(stepId) || null;
+      if (!rgb && absrColors) rgb = absrColors[globalFaceIdx] || null;
+      out.push(rgb ? rgbArrToHex(rgb) : null);
+      globalFaceIdx++;
+    }
+  }
+  return out;
+}
+
+function installModel(meshes, file) {
+  // Tear down previous model
+  if (modelGroup) {
+    modelGroup.traverse(o => {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) {
+        if (Array.isArray(o.material)) o.material.forEach(m => m.dispose());
+        else o.material.dispose();
+      }
+    });
+    scene.remove(modelGroup);
+  }
+  // Loading a new file wipes measurements — no undo trail for this; reset history.
+  while (measurements.length) removeMeasurementBare(measurements[0]);
+  activeMeasure = null;
+  selection = null;
+  detachGizmo();
+  clearSelectionVisuals();
+  undoStack.length = 0;
+  redoStack.length = 0;
+  if (measureMode) setMeasureMode(false);
+  refreshList();
+
+  modelGroup = new THREE.Group();
+  pickableMeshes = [];
+  let totalTris = 0;
+  for (const mesh of meshes) {
+    modelGroup.add(mesh);
+    pickableMeshes.push(mesh);
+    if (mesh.geometry.index) totalTris += mesh.geometry.index.count / 3;
+    else if (mesh.geometry.attributes.position) totalTris += mesh.geometry.attributes.position.count / 3;
+
+    // Edge overlay (off by default)
+    try {
+      const eg = new THREE.EdgesGeometry(mesh.geometry, 30);
+      const el = new THREE.LineSegments(eg, new THREE.LineBasicMaterial({ color: 0x000000, opacity: 0.4, transparent: true }));
+      el.visible = edgesOn;
+      mesh.add(el);
+    } catch (e) { /* edges optional */ }
+  }
+  scene.add(modelGroup);
+
+  const box = new THREE.Box3().setFromObject(modelGroup);
+  const size = new THREE.Vector3(); box.getSize(size);
+  modelDiagonal = size.length() || 1;
+  frameModel(box);
+
+  fileInfo.textContent = `${file.name} · ${(totalTris / 1000).toFixed(0)}k tris`;
+  document.getElementById('btn-measure').disabled = false;
+}
+
+// ── Measurement system ───────────────────────────────────────
+// Each measurement is a polyline of >=2 points (or 1 while being built).
+// Shape: {
+//   points: Vector3[],
+//   color: hex string,
+//   markers: Mesh[],          // one sphere per point
+//   lineObjs: Mesh[],         // one tube per segment (straight) or 1 (spline)
+//   sphereGeo: SphereGeometry (shared, owned by this measurement)
+//   spline: bool,
+// }
+const measurements = [];
+let activeMeasure = null;
+let measureMode = false;
+let hoverMarker = null;
+let lineThicknessFactor = 1.0;
+let selection = null; // { type: 'point' | 'meas', meas, idx? }
+
+const PALETTE = ['#0a84ff', '#ff9f0a', '#30d158', '#ff453a', '#bf5af2', '#5ac8fa', '#ffd60a', '#64d2ff'];
+let colorCursor = 0;
+
+// ── Undo/redo stack ──────────────────────────────────────────
+const undoStack = [];
+const redoStack = [];
+const MAX_UNDO = 200;
+
+function pushAction(action) {
+  undoStack.push(action);
+  if (undoStack.length > MAX_UNDO) undoStack.shift();
+  redoStack.length = 0;
+}
+function hasOrphanSinglePoint() {
+  return measurements.some(m => m !== activeMeasure && m.points.length < 2);
+}
+function undo() {
+  // Compound: if a step leaves a non-active measurement with 1 point (an invalid
+  // state), keep undoing until we either clear the stack or reach a valid state.
+  // This means undoing the second-pt add of a finished measurement also undoes
+  // the create — so users never see a lingering single-pt orphan.
+  while (true) {
+    const a = undoStack.pop(); if (!a) return;
+    a.undo(); redoStack.push(a);
+    syncStateAfterHistory();
+    if (!hasOrphanSinglePoint()) return;
+  }
+}
+function redo() {
+  while (true) {
+    const a = redoStack.pop(); if (!a) return;
+    a.redo(); undoStack.push(a);
+    syncStateAfterHistory();
+    if (!hasOrphanSinglePoint()) return;
+  }
+}
+function syncStateAfterHistory() {
+  if (activeMeasure && !measurements.includes(activeMeasure)) activeMeasure = null;
+  if (selection) {
+    if (!measurements.includes(selection.meas)) selection = null;
+    else if (selection.type === 'point' && selection.idx >= selection.meas.points.length) selection = null;
+  }
+  // Selection may have just been invalidated by undo/redo — refresh halos
+  updateSelectionVisuals();
+  refreshList();
+}
+
+document.addEventListener('keydown', e => {
+  // Esc closes the color picker first, regardless of what else
+  if (e.key === 'Escape' && cpick.style.display !== 'none') { closeColorPicker(); return; }
+  const tag = (e.target && e.target.tagName) || '';
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (e.key === 'Escape' && measureMode) { setMeasureMode(false); return; }
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); redo(); return; }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && selection) { e.preventDefault(); deleteSelectionAction(); }
+});
+
+// ── Mode UI ──────────────────────────────────────────────────
+function setMeasureMode(on) {
+  if (!on && activeMeasure) {
+    // If user finishes with fewer than 2 points, throw the half-built measurement
+    // away AND drop its undo entries (they'd resurrect a useless 1-point meas).
+    if (activeMeasure.points.length < 2) {
+      const meas = activeMeasure;
+      removeMeasurementBare(meas);
+      const isOurs = a => a.meas === meas;
+      for (let i = undoStack.length - 1; i >= 0; i--) if (isOurs(undoStack[i])) undoStack.splice(i, 1);
+      for (let i = redoStack.length - 1; i >= 0; i--) if (isOurs(redoStack[i])) redoStack.splice(i, 1);
+    }
+    activeMeasure = null;
+  }
+  measureMode = on;
+  document.getElementById('canvas-wrap').classList.toggle('measure-mode', measureMode);
+  const btn = document.getElementById('btn-measure');
+  btn.classList.toggle('on', measureMode);
+  btn.textContent = measureMode ? 'Finish (Esc)' : '+ New measurement';
+  ensureHoverMarker(measureMode);
+  refreshList();
+}
+document.getElementById('btn-measure').onclick = () => setMeasureMode(!measureMode);
+document.getElementById('btn-clear').onclick = () => clearAllAction();
+
+document.getElementById('line-thickness').oninput = e => {
+  lineThicknessFactor = parseFloat(e.target.value);
+  for (const m of measurements) rebuildLine(m);
+};
+document.getElementById('snap-vertex').onchange = () => { /* takes effect on next click */ };
+
+// ── Hover ghost marker ───────────────────────────────────────
+function ensureHoverMarker(on) {
+  if (on && !hoverMarker) {
+    const g = new THREE.SphereGeometry(1, 16, 12);
+    const m = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55, depthTest: false });
+    hoverMarker = new THREE.Mesh(g, m);
+    hoverMarker.renderOrder = 999;
+    hoverMarker.visible = false;
+    scene.add(hoverMarker);
+  }
+  if (hoverMarker) hoverMarker.visible = false;
+}
+
+let _lastHover = 0;
+canvas.addEventListener('mousemove', e => {
+  if (mouse.down) { if (hoverMarker) hoverMarker.visible = false; return; }
+  const markerHit = raycastMarkers(e.clientX, e.clientY);
+  if (markerHit) {
+    canvas.style.cursor = 'move';
+    if (hoverMarker) hoverMarker.visible = false;
+    return;
+  }
+  if (!measureMode) {
+    const lineHit = raycastLines(e.clientX, e.clientY);
+    if (lineHit) { canvas.style.cursor = 'pointer'; if (hoverMarker) hoverMarker.visible = false; return; }
+  }
+  canvas.style.cursor = '';
+  if (!measureMode) { if (hoverMarker) hoverMarker.visible = false; return; }
+  const now = performance.now();
+  if (now - _lastHover < 33) return;
+  _lastHover = now;
+  const hit = raycastSurface(e.clientX, e.clientY);
+  if (hit) {
+    if (!hoverMarker) ensureHoverMarker(true);
+    hoverMarker.position.copy(hit.point);
+    const r = markerRadius();
+    hoverMarker.scale.setScalar(r);
+    hoverMarker.material.color.set(hit.snapped ? 0x30d158 : 0xffffff);
+    hoverMarker.visible = true;
+  } else if (hoverMarker) hoverMarker.visible = false;
+});
+canvas.addEventListener('mouseleave', () => { if (hoverMarker) hoverMarker.visible = false; });
+
+function tubeBaseRadius() { return modelDiagonal * 0.0015 * lineThicknessFactor; }
+function markerRadius() {
+  // Marker stays roughly constant when the line is thin/normal and grows
+  // proportionally only when the line itself gets thick. Constants sized so
+  // the visible gap (circle minus line) is ~1.4× the original.
+  return Math.max(tubeBaseRadius() * 1.7, modelDiagonal * 0.007);
+}
+
+function raycastSurface(cx, cy) {
+  if (!pickableMeshes.length) return null;
+  const rect = canvas.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((cx - rect.left) / rect.width) * 2 - 1, -((cy - rect.top) / rect.height) * 2 + 1);
+  const rc = new THREE.Raycaster();
+  rc.setFromCamera(ndc, activeCamera);
+  const hits = rc.intersectObjects(pickableMeshes, false);
+  if (!hits.length) return null;
+  const hit = hits[0];
+  let point = hit.point.clone();
+  let snapped = false;
+  if (document.getElementById('snap-vertex').checked) {
+    const face = hit.face;
+    const geo = hit.object.geometry;
+    const pos = geo.attributes.position;
+    const v0 = new THREE.Vector3().fromBufferAttribute(pos, face.a).applyMatrix4(hit.object.matrixWorld);
+    const v1 = new THREE.Vector3().fromBufferAttribute(pos, face.b).applyMatrix4(hit.object.matrixWorld);
+    const v2 = new THREE.Vector3().fromBufferAttribute(pos, face.c).applyMatrix4(hit.object.matrixWorld);
+    let best = v0, bestD = point.distanceTo(v0);
+    const d1 = point.distanceTo(v1); if (d1 < bestD) { best = v1; bestD = d1; }
+    const d2 = point.distanceTo(v2); if (d2 < bestD) { best = v2; bestD = d2; }
+    if (bestD < modelDiagonal * 0.03) { point = best; snapped = true; }
+  }
+  return { point, snapped };
+}
+
+function handleMeasureClick(e) {
+  const hit = raycastSurface(e.clientX, e.clientY);
+  if (!hit) return;
+  if (!activeMeasure) {
+    const color = PALETTE[colorCursor++ % PALETTE.length];
+    const meas = createMeasurementBare(hit.point, color);
+    activeMeasure = meas;
+    pushAction({
+      meas,
+      undo: () => { removeMeasurementBare(meas); if (activeMeasure === meas) activeMeasure = null; },
+      redo: () => { addMeasurementBare(meas); }
+    });
+  } else {
+    const idx = activeMeasure.points.length;
+    const p = hit.point.clone();
+    const meas = activeMeasure;
+    insertPointBare(meas, idx, p);
+    pushAction({
+      meas,
+      undo: () => { removePointBare(meas, idx); },
+      redo: () => { insertPointBare(meas, idx, p); }
+    });
+  }
+  refreshList();
+}
+
+// ── Bare (no-undo) primitives ───────────────────────────────
+function createMeasurementBare(p, color, spline = false) {
+  const sphereGeo = new THREE.SphereGeometry(1, 20, 14);
+  const meas = { points: [], color, markers: [], lineObjs: [], sphereGeo, spline };
+  insertPointBare(meas, 0, p);
+  measurements.push(meas);
+  return meas;
+}
+function addMeasurementBare(meas) {
+  // Re-add an existing meas object (used by undo of delete)
+  measurements.push(meas);
+  for (const sp of meas.markers) scene.add(sp);
+  rebuildLine(meas);
+}
+function removeMeasurementBare(meas) {
+  const i = measurements.indexOf(meas); if (i >= 0) measurements.splice(i, 1);
+  // Markers: keep them around (undo may re-add via addMeasurementBare). Just detach from scene.
+  for (const sp of meas.markers) scene.remove(sp);
+  // Tubes: fully dispose (they're rebuilt fresh on re-add).
+  for (const o of meas.lineObjs) {
+    scene.remove(o);
+    o.geometry.dispose(); o.material.dispose();
+  }
+  meas.lineObjs.length = 0;
+  if (selection && selection.meas === meas) { selection = null; clearSelectionVisuals(); }
+}
+function insertPointBare(meas, idx, p) {
+  meas.points.splice(idx, 0, p.clone());
+  const r = markerRadius();
+  const mat = new THREE.MeshBasicMaterial({ color: meas.color, depthTest: false });
+  const sphere = new THREE.Mesh(meas.sphereGeo, mat);
+  sphere.renderOrder = 998;
+  sphere.scale.setScalar(r);
+  sphere.position.copy(p);
+  scene.add(sphere);
+  meas.markers.splice(idx, 0, sphere);
+  rebuildLine(meas);
+}
+function removePointBare(meas, idx) {
+  const sp = meas.markers[idx];
+  if (sp) { scene.remove(sp); sp.material.dispose(); }
+  meas.markers.splice(idx, 1);
+  meas.points.splice(idx, 1);
+  if (selection && selection.type === 'point' && selection.meas === meas) {
+    if (selection.idx === idx) selection = null;
+    else if (selection.idx > idx) selection.idx--;
+  }
+  rebuildLine(meas);
+  // Selection state may have just been invalidated (e.g. the selected point
+  // was removed), so refresh halos in case rebuildLine's conditional skip ran.
+  updateSelectionVisuals();
+}
+function movePointBare(meas, idx, p) {
+  meas.points[idx].copy(p);
+  meas.markers[idx].position.copy(p);
+  rebuildLine(meas);
+  // Keep the gizmo proxy in sync when this point is the selected one and something
+  // other than the gizmo moved it (drag-to-surface, undo/redo, dblclick neighbor insert).
+  if (transformProxy && selection && selection.type === 'point' && selection.meas === meas && selection.idx === idx) {
+    if (!transformProxy.position.equals(meas.points[idx])) transformProxy.position.copy(meas.points[idx]);
+  }
+}
+function setColorBare(meas, hex) {
+  meas.color = hex;
+  for (const sp of meas.markers) sp.material.color.set(hex);
+  rebuildLine(meas);
+}
+function setSplineBare(meas, on) {
+  meas.spline = !!on;
+  rebuildLine(meas);
+}
+
+// ── Line rendering with TubeGeometry ─────────────────────────
+function tubeRadius(meas) {
+  let base = tubeBaseRadius();
+  if (selection && selection.meas === meas) base *= 1.6; // selection bump
+  return Math.max(base, 1e-6);
+}
+
+function rebuildLine(meas) {
+  for (const o of meas.lineObjs) {
+    scene.remove(o);
+    o.geometry.dispose();
+    o.material.dispose();
+  }
+  meas.lineObjs.length = 0;
+  // If this is the selected measurement, halo positions/sizes track geometry → rebuild
+  if (selection && selection.meas === meas) updateSelectionVisuals();
+  if (meas.points.length < 2) return;
+
+  const radius = tubeRadius(meas);
+  const matOpts = { color: meas.color, depthTest: false, transparent: true, opacity: 0.95 };
+
+  if (meas.spline) {
+    const curve = new THREE.CatmullRomCurve3(meas.points, false, 'catmullrom', 0.5);
+    const segs = Math.max(64, meas.points.length * 24);
+    const geo = new THREE.TubeGeometry(curve, segs, radius, 8, false);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial(matOpts));
+    mesh.renderOrder = 997;
+    scene.add(mesh);
+    meas.lineObjs.push(mesh);
+  } else {
+    // One short tube per segment — avoids the frenet-frame twists you get
+    // with a single TubeGeometry over a polyline with sharp corners.
+    for (let i = 1; i < meas.points.length; i++) {
+      const a = meas.points[i - 1], b = meas.points[i];
+      if (a.distanceToSquared(b) < 1e-12) continue;
+      const curve = new THREE.LineCurve3(a, b);
+      const geo = new THREE.TubeGeometry(curve, 1, radius, 8, false);
+      const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial(matOpts));
+      mesh.renderOrder = 997;
+      scene.add(mesh);
+      meas.lineObjs.push(mesh);
+    }
+  }
+}
+
+// ── Length calculation (curve-aware) ─────────────────────────
+function totalLength(meas) {
+  if (meas.points.length < 2) return 0;
+  if (meas.spline) {
+    const curve = new THREE.CatmullRomCurve3(meas.points, false, 'catmullrom', 0.5);
+    return curve.getLength();
+  }
+  let s = 0;
+  for (let i = 1; i < meas.points.length; i++) s += meas.points[i].distanceTo(meas.points[i - 1]);
+  return s;
+}
+
+// ── Raycast helpers ──────────────────────────────────────────
+function raycastMarkers(cx, cy) {
+  if (!measurements.length) return null;
+  const all = [];
+  for (const m of measurements) for (const sp of m.markers) all.push(sp);
+  if (!all.length) return null;
+  const rect = canvas.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((cx - rect.left) / rect.width) * 2 - 1, -((cy - rect.top) / rect.height) * 2 + 1);
+  const rc = new THREE.Raycaster();
+  rc.setFromCamera(ndc, activeCamera);
+  const hits = rc.intersectObjects(all, false);
+  if (!hits.length) return null;
+  const sphere = hits[0].object;
+  for (const m of measurements) {
+    const i = m.markers.indexOf(sphere);
+    if (i >= 0) return { meas: m, idx: i, sphere };
+  }
+  return null;
+}
+
+function raycastLines(cx, cy) {
+  const all = [];
+  for (const m of measurements) for (const o of m.lineObjs) all.push(o);
+  if (!all.length) return null;
+  const rect = canvas.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((cx - rect.left) / rect.width) * 2 - 1, -((cy - rect.top) / rect.height) * 2 + 1);
+  const rc = new THREE.Raycaster();
+  rc.setFromCamera(ndc, activeCamera);
+  const hits = rc.intersectObjects(all, false);
+  if (!hits.length) return null;
+  const hit = hits[0];
+  for (const m of measurements) {
+    const i = m.lineObjs.indexOf(hit.object);
+    if (i >= 0) {
+      // Straight: lineObjs[i] is the i-th segment (between points[i] and points[i+1])
+      // Spline: only one lineObj — find the closest control segment via projection
+      const segIdx = m.spline ? nearestSegment(m, hit.point) : i;
+      return { meas: m, segIdx, point: hit.point.clone() };
+    }
+  }
+  return null;
+}
+
+function nearestSegment(meas, p) {
+  let best = 0, bestD = Infinity;
+  for (let i = 1; i < meas.points.length; i++) {
+    const a = meas.points[i - 1], b = meas.points[i];
+    const ab = new THREE.Vector3().subVectors(b, a);
+    const len2 = ab.lengthSq();
+    let t = len2 > 0 ? new THREE.Vector3().subVectors(p, a).dot(ab) / len2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const proj = a.clone().add(ab.multiplyScalar(t));
+    const d = proj.distanceToSquared(p);
+    if (d < bestD) { bestD = d; best = i - 1; }
+  }
+  return best;
+}
+
+// ── Selection + selection halos ──────────────────────────────
+let selectionVisuals = [];
+function clearSelectionVisuals() {
+  for (const o of selectionVisuals) {
+    scene.remove(o);
+    o.geometry.dispose();
+    o.material.dispose();
+  }
+  selectionVisuals.length = 0;
+}
+function updateSelectionVisuals() {
+  clearSelectionVisuals();
+  if (!selection) return;
+  const m = selection.meas;
+  if (!measurements.includes(m)) return;
+
+  const haloMat = () => new THREE.MeshBasicMaterial({
+    color: 0xffffff, transparent: true, opacity: 0.5,
+    depthTest: false, blending: THREE.AdditiveBlending
+  });
+  const sphereGeoBase = new THREE.SphereGeometry(1, 24, 16);
+
+  // Point halos
+  const pointIdxs = (selection.type === 'point') ? [selection.idx] : m.points.map((_, i) => i);
+  const r = markerRadius();
+  for (const i of pointIdxs) {
+    const isFocus = (selection.type === 'point' && selection.idx === i);
+    const scaleFactor = isFocus ? 2.4 : 1.7;
+    const halo = new THREE.Mesh(sphereGeoBase.clone(), haloMat());
+    halo.scale.setScalar(r * scaleFactor);
+    halo.position.copy(m.points[i]);
+    halo.renderOrder = 996;
+    scene.add(halo);
+    selectionVisuals.push(halo);
+  }
+  sphereGeoBase.dispose();
+
+  // Line halo when entire measurement is selected
+  if (selection.type === 'meas' && m.points.length >= 2) {
+    const haloR = tubeRadius(m) * 1.9;
+    if (m.spline) {
+      const curve = new THREE.CatmullRomCurve3(m.points, false, 'catmullrom', 0.5);
+      const segs = Math.max(64, m.points.length * 24);
+      const geo = new THREE.TubeGeometry(curve, segs, haloR, 8, false);
+      const mesh = new THREE.Mesh(geo, haloMat());
+      mesh.renderOrder = 996;
+      scene.add(mesh);
+      selectionVisuals.push(mesh);
+    } else {
+      for (let i = 1; i < m.points.length; i++) {
+        const a = m.points[i - 1], b = m.points[i];
+        if (a.distanceToSquared(b) < 1e-12) continue;
+        const curve = new THREE.LineCurve3(a, b);
+        const geo = new THREE.TubeGeometry(curve, 1, haloR, 8, false);
+        const mesh = new THREE.Mesh(geo, haloMat());
+        mesh.renderOrder = 996;
+        scene.add(mesh);
+        selectionVisuals.push(mesh);
+      }
+    }
+  }
+}
+
+function selectPoint(meas, idx) {
+  const prev = selection && selection.meas;
+  selection = { type: 'point', meas, idx };
+  if (prev && prev !== meas) rebuildLine(prev);
+  rebuildLine(meas);
+  updateSelectionVisuals();
+  attachGizmoToPoint(meas, idx);
+  refreshList();
+}
+function selectMeasurement(meas) {
+  const prev = selection && selection.meas;
+  selection = { type: 'meas', meas };
+  if (prev && prev !== meas) rebuildLine(prev);
+  rebuildLine(meas);
+  updateSelectionVisuals();
+  detachGizmo();
+  refreshList();
+}
+function deselect() {
+  if (!selection) return;
+  const m = selection.meas;
+  selection = null;
+  if (measurements.includes(m)) rebuildLine(m);
+  clearSelectionVisuals();
+  detachGizmo();
+  refreshList();
+}
+
+// ── Translate gizmo (TransformControls) ──────────────────────
+let transformControls = null;
+let transformProxy = null;       // an Object3D the gizmo attaches to
+let gizmoOriginalPos = null;     // snapshot at drag start, for the moveAction undo entry
+
+function ensureTransformControls() {
+  if (transformControls || !THREE.TransformControls) return transformControls;
+  transformControls = new THREE.TransformControls(activeCamera, renderer.domElement);
+  transformControls.setMode('translate');
+  transformControls.setSpace('world');
+  transformControls.addEventListener('dragging-changed', e => {
+    if (e.value) {
+      // Drag started — snapshot original position so we can record the move atomically
+      if (selection && selection.type === 'point' && measurements.includes(selection.meas)) {
+        gizmoOriginalPos = selection.meas.points[selection.idx].clone();
+      }
+    } else {
+      // Drag ended — record undoable action if anything actually moved
+      if (gizmoOriginalPos && selection && selection.type === 'point' && measurements.includes(selection.meas)) {
+        const meas = selection.meas, idx = selection.idx;
+        const finalPos = meas.points[idx].clone();
+        if (!gizmoOriginalPos.equals(finalPos)) moveAction(meas, idx, gizmoOriginalPos, finalPos);
+      }
+      gizmoOriginalPos = null;
+    }
+  });
+  transformControls.addEventListener('change', () => {
+    if (!transformProxy || !selection || selection.type !== 'point') return;
+    if (!measurements.includes(selection.meas)) return;
+    movePointBare(selection.meas, selection.idx, transformProxy.position);
+    refreshList();
+  });
+  scene.add(transformControls);
+  return transformControls;
+}
+
+function attachGizmoToPoint(meas, idx) {
+  const tc = ensureTransformControls();
+  if (!tc) return;
+  if (!transformProxy) {
+    transformProxy = new THREE.Object3D();
+    scene.add(transformProxy);
+  }
+  transformProxy.position.copy(meas.points[idx]);
+  tc.camera = activeCamera; // keep in sync if the user toggled persp/ortho
+  tc.attach(transformProxy);
+}
+function detachGizmo() {
+  if (transformControls) transformControls.detach();
+}
+
+// ── Action wrappers ──────────────────────────────────────────
+function dblclickInsertAction(meas, idx, p) {
+  insertPointBare(meas, idx, p);
+  pushAction({
+    meas,
+    undo: () => { removePointBare(meas, idx); },
+    redo: () => { insertPointBare(meas, idx, p); }
+  });
+  refreshList();
+}
+function moveAction(meas, idx, prev, next) {
+  pushAction({
+    meas,
+    undo: () => { movePointBare(meas, idx, prev); refreshList(); },
+    redo: () => { movePointBare(meas, idx, next); refreshList(); }
+  });
+}
+function deleteSelectionAction() {
+  if (!selection) return;
+  if (selection.type === 'point') {
+    const meas = selection.meas;
+    const idx = selection.idx;
+    if (meas.points.length <= 2) { deleteMeasurementAction(meas); return; }
+    const p = meas.points[idx].clone();
+    removePointBare(meas, idx);
+    pushAction({
+      meas,
+      undo: () => { insertPointBare(meas, idx, p); },
+      redo: () => { removePointBare(meas, idx); }
+    });
+    refreshList();
+  } else {
+    deleteMeasurementAction(selection.meas);
+  }
+}
+function deleteMeasurementAction(meas) {
+  removeMeasurementBare(meas);
+  pushAction({
+    meas,
+    undo: () => { addMeasurementBare(meas); },
+    redo: () => { removeMeasurementBare(meas); }
+  });
+  refreshList();
+}
+function clearAllAction() {
+  if (!measurements.length) return;
+  const list = measurements.slice();
+  for (const m of list) removeMeasurementBare(m);
+  pushAction({
+    undo: () => { for (const m of list) addMeasurementBare(m); },
+    redo: () => { for (const m of list) removeMeasurementBare(m); }
+  });
+  if (measureMode) setMeasureMode(false);
+  refreshList();
+}
+function splineToggleAction(meas) {
+  const prev = !!meas.spline;
+  setSplineBare(meas, !prev);
+  pushAction({
+    meas,
+    undo: () => { setSplineBare(meas, prev); refreshList(); },
+    redo: () => { setSplineBare(meas, !prev); refreshList(); }
+  });
+  refreshList();
+}
+
+// ── Custom dark color picker ─────────────────────────────────
+const cpick = document.getElementById('cpick');
+const cpSv = document.getElementById('cpick-sv');
+const cpHue = document.getElementById('cpick-hue');
+const cpHex = document.getElementById('cpick-hex');
+const cpSwatch = cpick.querySelector('.cpick-swatch');
+const cpSvCtx = cpSv.getContext('2d');
+const cpHueCtx = cpHue.getContext('2d');
+let cpH = 0, cpS = 1, cpV = 1;
+let cpTarget = null; // { meas, originalColor }
+let cpDragSV = false, cpDragHue = false;
+
+function hexToHsv(hex) {
+  const r = parseInt(hex.slice(1, 3), 16) / 255, g = parseInt(hex.slice(3, 5), 16) / 255, b = parseInt(hex.slice(5, 7), 16) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0, s = max ? d / max : 0, v = max;
+  if (d) {
+    if (max === r) h = ((g - b) / d + 6) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    h *= 60;
+  }
+  return { h, s, v };
+}
+function hsvToHex(h, s, v) {
+  const f = n => { const k = (n + h / 60) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); };
+  return '#' + [f(5), f(3), f(1)].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join('');
+}
+function cpDrawSV() {
+  const w = cpSv.width, h = cpSv.height;
+  const gS = cpSvCtx.createLinearGradient(0, 0, w, 0);
+  gS.addColorStop(0, '#fff'); gS.addColorStop(1, `hsl(${cpH},100%,50%)`);
+  cpSvCtx.fillStyle = gS; cpSvCtx.fillRect(0, 0, w, h);
+  const gV = cpSvCtx.createLinearGradient(0, 0, 0, h);
+  gV.addColorStop(0, 'transparent'); gV.addColorStop(1, '#000');
+  cpSvCtx.fillStyle = gV; cpSvCtx.fillRect(0, 0, w, h);
+  const cx = cpS * w, cy = (1 - cpV) * h;
+  cpSvCtx.beginPath(); cpSvCtx.arc(cx, cy, 6, 0, Math.PI * 2);
+  cpSvCtx.strokeStyle = '#fff'; cpSvCtx.lineWidth = 2; cpSvCtx.stroke();
+  cpSvCtx.beginPath(); cpSvCtx.arc(cx, cy, 7, 0, Math.PI * 2);
+  cpSvCtx.strokeStyle = 'rgba(0,0,0,0.5)'; cpSvCtx.lineWidth = 1; cpSvCtx.stroke();
+}
+function cpDrawHue() {
+  const w = cpHue.width, h = cpHue.height;
+  const g = cpHueCtx.createLinearGradient(0, 0, w, 0);
+  for (let i = 0; i <= 6; i++) g.addColorStop(i / 6, `hsl(${i * 60},100%,50%)`);
+  cpHueCtx.fillStyle = g; cpHueCtx.fillRect(0, 0, w, h);
+  const cx = (cpH / 360) * w;
+  cpHueCtx.fillStyle = '#fff'; cpHueCtx.strokeStyle = 'rgba(0,0,0,0.5)'; cpHueCtx.lineWidth = 1;
+  cpHueCtx.beginPath(); cpHueCtx.rect(cx - 3, 0, 6, h); cpHueCtx.fill(); cpHueCtx.stroke();
+}
+function cpApplyHsv() {
+  const hex = hsvToHex(cpH, cpS, cpV);
+  cpHex.value = hex.toUpperCase();
+  cpSwatch.style.background = hex;
+  if (cpTarget) setColorBare(cpTarget.meas, hex);
+}
+function cpSetFromHex(hex) {
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return false;
+  const hsv = hexToHsv(hex.toLowerCase());
+  cpH = hsv.h; cpS = hsv.s; cpV = hsv.v;
+  cpDrawSV(); cpDrawHue(); cpApplyHsv();
+  return true;
+}
+function cpUpdateSV(e) {
+  const r = cpSv.getBoundingClientRect();
+  cpS = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+  cpV = 1 - Math.max(0, Math.min(1, (e.clientY - r.top) / r.height));
+  cpDrawSV(); cpApplyHsv();
+}
+function cpUpdateHue(e) {
+  const r = cpHue.getBoundingClientRect();
+  cpH = Math.max(0, Math.min(359, ((e.clientX - r.left) / r.width) * 360));
+  cpDrawSV(); cpDrawHue(); cpApplyHsv();
+}
+cpSv.addEventListener('mousedown', e => { cpDragSV = true; cpUpdateSV(e); e.stopPropagation(); });
+cpHue.addEventListener('mousedown', e => { cpDragHue = true; cpUpdateHue(e); e.stopPropagation(); });
+window.addEventListener('mousemove', e => { if (cpDragSV) cpUpdateSV(e); if (cpDragHue) cpUpdateHue(e); });
+window.addEventListener('mouseup', () => { cpDragSV = false; cpDragHue = false; });
+cpHex.addEventListener('input', () => {
+  let v = cpHex.value.trim();
+  if (!v.startsWith('#')) v = '#' + v;
+  if (/^#[0-9a-f]{6}$/i.test(v)) cpSetFromHex(v.toLowerCase());
+});
+cpHex.addEventListener('blur', () => {
+  if (!/^#[0-9a-f]{6}$/i.test(cpHex.value) && cpTarget) cpHex.value = cpTarget.meas.color.toUpperCase();
+});
+// Eat all mousedown inside the picker so the global "click outside" handler doesn't close it
+cpick.addEventListener('mousedown', e => e.stopPropagation());
+
+function openColorPicker(meas, anchorEl) {
+  // If picker was already open for a different measurement, commit that change first
+  if (cpTarget && cpTarget.meas !== meas) closeColorPicker();
+  cpTarget = { meas, originalColor: meas.color };
+  cpSetFromHex(meas.color);
+  cpick.style.display = 'block';
+  // Position to the right of the dot, flipping left if it would overflow the viewport
+  const rect = anchorEl.getBoundingClientRect();
+  const pickerW = 248, pickerH = 250;
+  let left = rect.right + 8;
+  if (left + pickerW > window.innerWidth) left = rect.left - pickerW - 8;
+  let top = rect.top - 10;
+  if (top + pickerH > window.innerHeight) top = window.innerHeight - pickerH - 8;
+  cpick.style.left = Math.max(8, left) + 'px';
+  cpick.style.top = Math.max(8, top) + 'px';
+}
+function closeColorPicker() {
+  if (cpick.style.display === 'none') return;
+  cpick.style.display = 'none';
+  if (!cpTarget) return;
+  const meas = cpTarget.meas;
+  const prev = cpTarget.originalColor;
+  const next = meas.color;
+  cpTarget = null;
+  if (prev !== next && measurements.includes(meas)) {
+    pushAction({
+      meas,
+      undo: () => { setColorBare(meas, prev); refreshList(); },
+      redo: () => { setColorBare(meas, next); refreshList(); }
+    });
+  }
+  refreshList();
+}
+// Close on outside click — only fires for clicks NOT inside the picker
+// (the picker eats its own mousedowns above) and not on a color dot (which opens it)
+document.addEventListener('mousedown', e => {
+  if (cpick.style.display === 'none') return;
+  if (e.target.closest('.m-dot')) return;
+  closeColorPicker();
+});
+
+// ── Distance formatting ─────────────────────────────────────
+function formatDistance(d) {
+  let s;
+  if (d >= 100) s = d.toFixed(2);
+  else if (d >= 1) s = d.toFixed(3);
+  else s = d.toFixed(4);
+  return `${s} mm`;
+}
+
+// ── Sidebar table ────────────────────────────────────────────
+function refreshList() {
+  const wrap = document.getElementById('measure-table-wrap');
+  if (!measurements.length) {
+    wrap.innerHTML = '<div class="empty-msg">No measurements yet</div>';
+    document.getElementById('btn-clear').disabled = true;
+    return;
+  }
+
+  const rows = measurements.map((m, i) => {
+    const n = m.points.length;
+    const isActive = m === activeMeasure;
+    const rowSel = selection && selection.meas === m ? ' selected' : '';
+    let distCell;
+    if (n >= 2) {
+      const dist = totalLength(m);
+      const suffix = isActive ? ' <span class="m-val pending">…</span>' : '';
+      distCell = `<td class="m-val">${formatDistance(dist)}${suffix}</td>`;
+    } else {
+      distCell = `<td class="m-val pending">click next pt…</td>`;
+    }
+    const splineLabel = m.spline
+      ? '<span class="gly">∿</span>Curve'
+      : '<span class="gly">─</span>Line';
+    return `<tr data-idx="${i}" class="${rowSel.trim()}">
+      <td>
+        <div class="m-id-cell">
+          <button class="m-dot" style="background:${m.color}" data-idx="${i}" title="Change color"></button>
+          <span class="m-num">M${i + 1}</span>
+          <span class="m-pts">${n}p</span>
+        </div>
+      </td>
+      <td>
+        <button class="m-spline ${m.spline ? 'on' : ''}" data-idx="${i}" title="Toggle smooth curve through all waypoints">${splineLabel}</button>
+      </td>
+      ${distCell}
+      <td><button class="m-del" data-idx="${i}" title="Delete">×</button></td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `<table class="m-table">
+    <thead><tr><th>#</th><th>Type</th><th>Distance</th><th></th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+
+  wrap.querySelectorAll('button.m-del').forEach(btn => {
+    btn.onclick = e => { e.stopPropagation(); deleteMeasurementAction(measurements[parseInt(btn.dataset.idx)]); };
+  });
+  wrap.querySelectorAll('button.m-spline').forEach(btn => {
+    btn.onclick = e => { e.stopPropagation(); splineToggleAction(measurements[parseInt(btn.dataset.idx)]); };
+  });
+  wrap.querySelectorAll('button.m-dot').forEach(btn => {
+    btn.onclick = e => { e.stopPropagation(); openColorPicker(measurements[parseInt(btn.dataset.idx)], btn); };
+  });
+
+  document.getElementById('btn-clear').disabled = false;
+}
+
+function updateLabels() {
+  // Keep marker spheres at a stable world-space size as camera distance changes,
+  // and pop selected markers larger.
+  const r = markerRadius();
+  for (const m of measurements) {
+    for (let i = 0; i < m.markers.length; i++) {
+      let factor = 1;
+      if (selection) {
+        if (selection.type === 'point' && selection.meas === m && selection.idx === i) factor = 1.9;
+        else if (selection.meas === m) factor = 1.25;
+      }
+      m.markers[i].scale.setScalar(r * factor);
+    }
+  }
+  if (hoverMarker && hoverMarker.visible) hoverMarker.scale.setScalar(r);
+}
+
+// All module state is now initialized — safe to start the render loop.
+renderLoop();
+</script>
+</body></html>
