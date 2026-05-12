@@ -106,6 +106,11 @@ canvas { display: block; width: 100%; height: 100%; }
       <button class="ctrl-btn" id="btn-measure" disabled>+ New measurement</button>
       <button class="ctrl-btn" id="btn-clear" disabled>Clear all</button>
     </div>
+    <div class="row">
+      <button class="ctrl-btn" id="btn-export" disabled>Export</button>
+      <button class="ctrl-btn" id="btn-import">Import</button>
+      <input type="file" id="import-input" accept=".json,application/json" style="display:none;">
+    </div>
     <div class="row" style="gap:10px;">
       <label style="text-transform:none;letter-spacing:0;font-size:11px;color:rgba(235,235,245,0.55);font-weight:400;flex:0 0 auto;margin:0;">Line thickness</label>
       <input type="range" id="line-thickness" min="0.3" max="6" step="0.1" value="1" style="flex:1;">
@@ -1000,6 +1005,71 @@ function setMeasureMode(on) {
 }
 document.getElementById('btn-measure').onclick = () => setMeasureMode(!measureMode);
 document.getElementById('btn-clear').onclick = () => clearAllAction();
+document.getElementById('btn-export').onclick = () => exportMeasurements();
+document.getElementById('btn-import').onclick = () => document.getElementById('import-input').click();
+document.getElementById('import-input').onchange = e => {
+  const f = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if (f) importMeasurementsFromFile(f);
+};
+
+function exportMeasurements() {
+  if (!measurements.length) return;
+  const payload = {
+    version: 1,
+    units: 'mm',
+    exported: new Date().toISOString(),
+    measurements: measurements.map(m => ({
+      color: m.color,
+      spline: !!m.spline,
+      points: m.points.map(p => ({ x: p.x, y: p.y, z: p.z })),
+    })),
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const base = (fileInfo.textContent.split(' · ')[0] || 'measurements').replace(/\.[^.]+$/, '');
+  a.download = `${base || 'measurements'}-measurements.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function importMeasurementsFromFile(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    let data;
+    try { data = JSON.parse(reader.result); }
+    catch (err) { alert('Import failed: not valid JSON.\n' + err.message); return; }
+    const list = data && Array.isArray(data.measurements) ? data.measurements : null;
+    if (!list) { alert('Import failed: file has no "measurements" array.'); return; }
+
+    const created = [];
+    for (const m of list) {
+      if (!m || !Array.isArray(m.points) || m.points.length < 1) continue;
+      const pts = m.points
+        .filter(p => p && Number.isFinite(p.x) && Number.isFinite(p.y) && Number.isFinite(p.z))
+        .map(p => new THREE.Vector3(p.x, p.y, p.z));
+      if (pts.length < 1) continue;
+      const color = typeof m.color === 'string' && /^#[0-9a-f]{6}$/i.test(m.color)
+        ? m.color : PALETTE[colorCursor++ % PALETTE.length];
+      const meas = createMeasurementBare(pts[0], color, !!m.spline);
+      for (let i = 1; i < pts.length; i++) insertPointBare(meas, i, pts[i]);
+      created.push(meas);
+    }
+    if (!created.length) { alert('Import: no valid measurements found.'); return; }
+
+    // Single compound undo entry that drops/restores all imported measurements at once.
+    pushAction({
+      meas: created[0],
+      undo: () => { for (const meas of created) removeMeasurementBare(meas); },
+      redo: () => { for (const meas of created) addMeasurementBare(meas); },
+    });
+    refreshList();
+  };
+  reader.onerror = () => alert('Import failed: could not read file.');
+  reader.readAsText(file);
+}
 
 document.getElementById('line-thickness').oninput = e => {
   lineThicknessFactor = parseFloat(e.target.value);
@@ -1651,6 +1721,7 @@ function refreshList() {
   if (!measurements.length) {
     wrap.innerHTML = '<div class="empty-msg">No measurements yet</div>';
     document.getElementById('btn-clear').disabled = true;
+    document.getElementById('btn-export').disabled = true;
     return;
   }
 
@@ -1701,6 +1772,7 @@ function refreshList() {
   });
 
   document.getElementById('btn-clear').disabled = false;
+  document.getElementById('btn-export').disabled = false;
 }
 
 function updateLabels() {

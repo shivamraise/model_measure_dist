@@ -21,6 +21,7 @@ No install, no build step — just open `index.html` in a browser, or use the ho
 - **2D outline overlay** — when **Edges** is on, a 2D canvas overlay strokes thin black borders on either side of each colored line + circles around each waypoint, capped tangent to one another. Behaves like a screen-space outline shader without depth artifacts.
 - **Selection halos** — selected point/measurement gets an additive white glow so it's distinct from its color.
 - **Undo/redo** — `Ctrl+Z` / `Ctrl+Y` (or `Ctrl+Shift+Z`). Tracks: create, add waypoint, drag move, gizmo move, dblclick insert, delete point, delete measurement, color change, spline toggle, clear all. Compound stepping prevents 1-point orphan chains from ever being a visible state.
+- **Import / Export** — save all measurements to a JSON file (`{version, units:"mm", measurements:[{color, spline, points:[{x,y,z}…]}]}`) and reload them later. Import appends to the current set as a single undo entry. Points are world-space mm with no model binding, so JSONs are most useful when re-loaded onto the same model.
 - **Camera:**
   - Left-drag = orbit around the model center (rotation pivot is fixed at the bbox center, decoupled from pan)
   - Right-drag = pan (pixel-accurate at the depth of the rotation pivot)
